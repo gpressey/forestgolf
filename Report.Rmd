@@ -1,0 +1,366 @@
+---
+title: "Report"
+output: 
+  html_document:
+    toc: TRUE
+    toc_depth: 3
+    toc_float: TRUE
+    number_sections: TRUE
+    theme: paper
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+
+library(tidyverse)
+
+extrafont::loadfonts(device = "win")
+theme_set(theme_minimal(base_size = 16, base_family = "Tw Cen MT"))
+
+d <- read_csv(here::here("data","full-golf-scores.csv"))
+d_game <- read_csv(here::here("data","full-golf-games.csv"))
+```
+
+# About
+
+The Minaki Forest Golf Course is located one hundred metres inland from the Winnipeg River reservoir, three kilometres upstream of the community of Minaki. The territory is Shield, with granite outcroppings and minimal soil. There are plentiful jack pines, juniper and blueberry bushes, lichens, and mosses. Grass is relatively uncommon.
+
+The course consists of nine holes:
+
+1. A straight five metres, the challenge from this hole comes from spruce roots and variable moss depths.
+2. Arcing to the right, this hole ends in a gentle circular pitch, which aids in getting the balls in.
+3. Several prominent roots make this hole more challening, as is blueberry bushes off of the straight.
+4. Two logs are laid across the path. Over the years, a more direct alternate route to the right of the stumps has developed.
+5. A sloping rise to the hole over bare granite makes it hard to judge the right force to use, and makes lofting the ball riskier.
+6. A dogleg right around saskatoon berry bushes and blueberry bushes makes this trickier. The upward bare granite breaks in the direction of the hole. 
+7. A steep drop on bare granite covers the hole and spruce trees and thick moss provide a dense rough.
+8. While the juniper bushes have been tamed over the years, relatively thin moss and a crevice after the hole presents a challenge.
+9. The longest course, following the path around to the left. The hole is located in relatively deep sphagnum moss.
+
+# Methodology
+
+Games and course scores have been consistently recorded since 1999. 
+
+Prior to 2003, the year was recorded inconsistently and the year used represents a best-guess based on the information available.
+
+* The year, player, and scores for each hole were recorded. 
+* Each game is assigned a unique identifier.
+* Incomplete games, games marked with mulligans, best-ball games, and pair games were not recorded.
+
+# Analysis
+
+## Course use
+
+The course saw the most sustained, recorded use in the years since its founding. Recently, the course has seen fewer than 25 games each year. 
+
+```{r}
+
+d_game %>% 
+  count(year) %>% 
+  ggplot() +
+  geom_point(
+    aes(year, n), 
+    #alpha = 0.4,
+    colour = "red") +
+  geom_smooth(
+    aes(year, n), 
+    fill = NA, 
+    colour = "black",
+    size = 1.2)
+```
+As a reminder, while results from 2001 and earlier display some variance, record-keeping was less formalized and the year was rarely recorded.
+
+## Results by game
+
+* Who won the most? Can I use standard golf analytic measures? Need to look those up
+
+```{r}
+# top winners
+win <- d_game %>% 
+  group_by(player) %>% 
+  count(winner) %>% 
+  mutate(
+    total = sum(n),
+    win_pct = n / total) %>%
+  filter(winner == T) %>% 
+  ungroup()
+
+win %>% 
+  ggplot(
+    aes(x = n, y = win_pct)) + 
+  geom_point() +
+  stat_smooth(
+    geom = "line", 
+    method = "lm",
+    colour = "red") +
+  scale_x_log10()
+  
+```
+
+#### Ties
+
+Fewer than one in ten games ended in a tie. Over 20 years, 
+
+```{r}
+d_game %>% 
+  filter(winner) %>% 
+  group_by(game_id, winner) %>% 
+  tally() %>% 
+  group_by(n) %>% 
+  tally() %>% 
+  ggplot() +
+  geom_col(aes(x = n, y = nn)) +
+  labs(x = "Winners", y = "Games")
+```
+
+
+* Can I break down results by season and create a ranking?
+
+#### Average number of players per game
+
+Most games had two, three, or four players. Only a few had five or six, and no recorded singles game had seven or more.
+
+```{r}
+d_game %>% 
+  group_by(game_id) %>% 
+  tally() %>% 
+  group_by(n) %>%  
+  tally() %>% 
+  ggplot() + 
+  geom_col(aes(x = n, y = nn))
+```
+
+
+## Scores
+
+
+### Scores by player
+
+```{r}
+d_game %>% 
+  group_by(player) %>% 
+  summarize(
+    n_games = n(),
+    mean_score = mean(total)) %>% 
+  arrange(-n_games) 
+```
+
+### Effect of playing lots of games
+
+```{r}
+d_game %>% 
+  group_by(player) %>% 
+  summarize(
+    n_games = n(),
+    mean_score = mean(total)) %>% 
+  arrange(mean_score) %>% 
+  #filter(n_games > 1) %>% 
+  ggplot(    
+    aes(
+      x = n_games, 
+      y = mean_score)) +
+  geom_point(
+    size = 1.5) +
+  geom_smooth(
+    fill = NA,
+    method = "lm",
+    colour = "red"
+  ) +
+  scale_x_log10() +
+  labs(
+    title = "Relationship between average score and number of games played",
+    x = "Number of games",
+    y = "Average score"
+  )
+```
+
+### Scores over time
+
+```{r}
+ggplot(d_game) + 
+  geom_jitter(aes(x = year, y = total)) + 
+  geom_smooth(aes(x = year, y = total),
+              fill = NA)
+
+
+
+```
+
+
+```{r}
+# scores over time
+d_game %>% 
+  mutate(
+    player = fct_lump_n(player, 5)
+  ) %>% 
+  group_by(year, player) %>% 
+  summarize(
+    mean_score = mean(total)
+  ) %>% 
+  ggplot(
+    aes(x = year, y = mean_score, colour = player)
+  ) + 
+  geom_line()
+```
+
+
+* Overall highest and lowest golf scores
+
+### Density of scores
+
+```{r}
+d_game %>% 
+  filter(str_detect(player,"leonard$|carol$")) %>% 
+  ggplot() + 
+  geom_density(
+    aes(total, fill = player),
+    alpha = 0.3,
+    colour = "black")
+
+```
+
+
+## Results by hole
+
+### Overall results by hole
+
+```{r}
+ggplot(d) +
+  geom_jitter(
+    aes(
+      x = hole, 
+      y = score, 
+      group = paste(game_id, player)),
+    width = 1/10,
+    alpha = 1/10
+    ) +
+  geom_hline(
+    aes(yintercept = mean_score),
+    colour = "red",
+    size = 1.2
+  ) +
+  facet_wrap(~ hole, nrow = 1, scales = "free_x") +
+  scale_x_continuous(breaks = NULL) +
+  scale_y_continuous(breaks = c(1,3,5,7,9), limits = c(1,10))
+```
+
+
+* Who was the best golfer for each hole?
+
+
+## Holes in One
+
+* Who got the most? (normalize by games played)
+
+```{r}
+# holes in 1
+
+d %>% 
+  filter(score == 1) %>% 
+  group_by(player) %>% 
+  tally() %>% 
+  arrange(-n) %>% 
+  left_join(
+    d_game %>% 
+      count(player) %>% 
+      rename(games = n)
+  ) %>% 
+  mutate(
+    percent = n / games
+  ) %>% 
+  arrange(-percent) %>% 
+  ggplot(aes(x = n, y = percent)) + 
+  geom_point()
+```
+
+
+* What holes did they occur?
+
+```{r}
+d %>% 
+  filter(score == 1) %>% 
+  group_by(hole) %>% 
+  tally() %>% 
+  ggplot() + 
+  geom_col(aes(x = hole, y = n)) + 
+  scale_x_continuous(breaks = 1:9)
+```
+
+* What's the probability of getting hole in one on this course? By game, by stroke?
+
+```{r}
+d %>% 
+  na.omit() %>% 
+  group_by(hole_in_one = score == 1, hole) %>% 
+  tally() %>% 
+  nest(-hole) %>% 
+  mutate(total = map_dbl(data, sum)) %>% 
+  unnest(data) %>% 
+  filter(hole_in_one == T) %>% 
+  mutate(prob = n / total) %>% 
+  ggplot() + 
+  geom_point(aes(x = hole, y = prob)) + 
+  scale_x_continuous(breaks = 1:9) + 
+  scale_y_continuous(labels = scales::percent_format(), limits = c(0,.02)) +
+  labs(
+    title = "Probability of achieving a hole in one, by hole",
+    y = "probability"
+  )
+  
+```
+
+Hole in ones occur in slight more than one in ten games.
+
+```{r}
+d %>% 
+  na.omit() %>% 
+  group_by(
+    game_id
+  ) %>% 
+  count(hole_in_one = score == 1) %>% 
+  nest(data = -game_id) %>% 
+  mutate(
+    has_hole_in_one = map_dbl(data, ~ sum(.$hole_in_one))
+  ) %>% 
+  ggplot() + 
+  geom_bar(aes(has_hole_in_one))
+  
+```
+
+
+
+* Has the chance of getting a hole in one changed over time?
+
+```{r}
+d %>% 
+  filter(score == 1) %>% 
+  group_by(year) %>% 
+  tally() %>% 
+  ggplot() + 
+  geom_col(aes(year, n)) + 
+  labs(title = "Hole in Ones by Year")
+```
+
+```{r}
+tibble(year = 1999:2020) %>% 
+  left_join(
+    d %>% 
+    na.omit() %>% 
+    group_by(year, hole_in_one = score == 1) %>% 
+    tally() %>% 
+    nest(data = -year) %>% 
+    mutate(total = map_dbl(data, ~sum(.$n))) %>% 
+    unnest(data) %>% 
+    filter(hole_in_one == T) %>% 
+    mutate(prob = n / total) 
+  ) %>% 
+  mutate(
+    prob = ifelse(is.na(prob), 0, prob)
+  ) %>% 
+  ggplot(aes(year, prob)) + 
+  geom_point() + 
+  geom_smooth() + 
+  labs(title = "Probability of getting hole-in-one per stroke, by year")
+  
+```
+
